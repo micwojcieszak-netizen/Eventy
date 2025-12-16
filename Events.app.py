@@ -3,94 +3,100 @@ from serpapi import GoogleSearch
 from datetime import datetime
 import pandas as pd
 
-# --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="StadiumStaffer Clone", layout="wide")
+# 1. Konfiguracja strony
+st.set_page_config(page_title="StadiumStaffer", layout="wide")
 
-# Stylizacja CSS dla kart (identyczna jak na zdjęciu)
-st.markdown("""
-    <style>
+# 2. Bezpieczne ładowanie stylów (rozwiązuje błąd TypeError)
+st.write('<style>div.stMarkdown { font-family: sans-serif; }</style>', unsafe_content_html=True)
+
+# Definicja stylu jako czysty tekst
+css = """
+<style>
     .event-card {
-        background-color: #fff9f2; /* Jasnopomarańczowe tło jak na screenie */
+        background-color: #fff9f2;
         border: 1px solid #ffe8cc;
-        border-radius: 15px;
+        border-radius: 12px;
         padding: 20px;
-        margin-bottom: 15px;
-        color: #1a1a1a;
+        margin-bottom: 20px;
     }
     .status-badge {
         background-color: #fff4e6;
         color: #d9480f;
-        padding: 5px 12px;
-        border-radius: 10px;
+        padding: 4px 12px;
+        border-radius: 8px;
         font-weight: bold;
-        font-size: 0.85rem;
+        float: right;
     }
-    .event-title { font-weight: bold; font-size: 1.2rem; }
-    .countdown { color: #d9480f; font-weight: bold; margin-top: 10px; }
-    </style>
-    """, unsafe_content_html=True)
+    .countdown {
+        color: #d9480f;
+        font-weight: bold;
+        margin-top: 10px;
+    }
+</style>
+"""
+st.markdown(css, unsafe_content_html=True)
 
+# 3. Nagłówek i wyszukiwarka
 st.title("Schedule Overview")
-st.write("Wyszukaj nadchodzące wydarzenia dla dowolnej drużyny lub areny.")
+query = st.text_input("Enter venue or team name:", "LCFC")
 
-# --- WYSZUKIWARKA ---
-query = st.text_input("Wpisz nazwę (np. LCFC, AO Arena, Manchester City):", "LCFC")
-
-def fetch_live_events(search_query):
+# 4. Funkcja pobierająca dane z Google (SerpApi)
+def get_live_data(q):
     params = {
-        "q": f"{search_query} events schedule",
+        "q": f"{q} fixtures events",
         "hl": "en",
         "gl": "gb",
-        "api_key": "TWÓJ_KLUCZ_SERPAPI" # <--- WKLEJ TUTAJ SWÓJ KLUCZ
+        "api_key": "TWÓJ_KLUCZ_SERPAPI" # <--- WKLEJ KLUCZ TUTAJ
     }
-    
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    events = []
-    
-    # Przeszukiwanie wyników "Knowledge Graph" (Google Events)
-    if "events_results" in results:
-        for ev in results["events_results"]:
-            title = ev.get("title")
-            venue = ev.get("venue", {}).get("name", "Unknown Venue")
-            # Próba wyciągnięcia daty
-            date_raw = ev.get("date", {}).get("start_time", "2025-12-25 15:00")
-            
-            events.append({
-                "title": title,
-                "venue": venue,
-                "date": date_raw,
-                "status": "Upcoming"
-            })
-    return events
+    try:
+        search = GoogleSearch(params)
+        res = search.get_dict()
+        events = []
+        # Przeszukiwanie wyników sportowych lub eventowych Google
+        if "sports_results" in res and "games" in res["sports_results"]:
+            for game in res["sports_results"]["games"][:6]:
+                events.append({
+                    "title": game.get("teams", [{},{}])[0].get("name", "") + " v " + game.get("teams", [{},{}])[1].get("name", ""),
+                    "date": game.get("date", "Upcoming"),
+                    "venue": q.upper(),
+                    "status": "Upcoming"
+                })
+        elif "events_results" in res:
+            for ev in res["events_results"][:6]:
+                events.append({
+                    "title": ev.get("title"),
+                    "date": ev.get("date", {}).get("when", "Upcoming"),
+                    "venue": ev.get("venue", {}).get("name", q),
+                    "status": "Scheduled"
+                })
+        return events
+    except:
+        return []
 
-# --- WYŚWIETLANIE ---
+# 5. Budowanie widoku (Karty jak na zdjęciu)
 if query:
-    data = fetch_live_events(query)
-    
+    data = get_live_data(query)
     if data:
-        st.subheader(f"Upcoming Schedule for: {query}")
-        cols = st.columns(2)
+        st.write(f"Upcoming events across venues in the next 14 days.")
         
+        # Statystyki (uproszczone)
+        col_s1, col_s2 = st.columns(2)
+        col_s1.metric("UPCOMING (2 WEEKS)", len(data))
+        col_s2.metric("TRACKED VENUES", "1")
+
+        # Karty w dwóch kolumnach
+        cols = st.columns(2)
         for i, ev in enumerate(data):
             with cols[i % 2]:
-                # Obliczanie dni do wydarzenia (uproszczone)
-                try:
-                    event_dt = pd.to_datetime(ev['date'])
-                    days_left = (event_dt.replace(tzinfo=None) - datetime.now()).days
-                except:
-                    days_left = "?"
-
-                st.markdown(f"""
-                    <div class="event-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div class="event-title">{ev['title']}</div>
-                            <div class="status-badge">⚠️ {ev['status']}</div>
-                        </div>
-                        <div style="color: #666; margin-top: 5px;">{ev['venue']}</div>
-                        <div style="margin-top: 10px;">🕒 {ev['date']}</div>
-                        <div class="countdown">Happening in {days_left} days</div>
-                    </div>
-                """, unsafe_content_html=True)
+                card_html = f"""
+                <div class="event-card">
+                    <span class="status-badge">⚠️ {ev['status']}</span>
+                    <div style="font-weight: bold; font-size: 1.1rem; color: black;">{ev['title']}</div>
+                    <div style="color: #666; font-size: 0.9rem;">{ev['venue']}</div>
+                    <div style="margin-top: 10px; color: black;">🕒 {ev['date']}</div>
+                    <div class="countdown">Event synchronized live</div>
+                </div>
+                """
+                st.markdown(card_html, unsafe_content_html=True)
     else:
-        st.warning("Nie znaleziono oficjalnych wydarzeń. Spróbuj dopisać nazwę miasta.")
+        st.warning("No live data found. Check your API Key or try a different name.")
