@@ -6,7 +6,7 @@ import random
 # 1. KONFIGURACJA STRONY
 st.set_page_config(page_title="Event Collector 💡", layout="wide")
 
-# 2. DESIGN PREMIUM (DARK MODE)
+# 2. DESIGN DARK MODE
 st.html("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #0b0d11; color: #ffffff; font-family: 'Inter', sans-serif; }
@@ -31,38 +31,30 @@ st.html("""
 """)
 
 st.markdown("# Event Collector 💡")
-st.write("Wyszukuj dowolne wydarzenia, mecze i koncerty na całym świecie.")
+query = st.text_input("Wyszukaj stadion, miasto lub drużynę:", "AO Arena Manchester")
 
-# Pasek wyszukiwania
-query = st.text_input("Wpisz stadion, miasto lub drużynę (np. Madison Square Garden, Warszawa, Barcelona):", "London Events")
-
-# SŁOWNIK POJEMNOŚCI (Możesz tu dopisywać kolejne)
 CAPACITIES = {
     "WEMBLEY": 90000, "AO ARENA": 21000, "LCFC": 32261, "KING POWER": 32261, 
-    "O2 ARENA": 20000, "TAURON": 15000, "STADION NARODOWY": 58000, "CAMP NOU": 99000,
+    "O2 ARENA": 20000, "TAURON": 15000, "NARODOWY": 58000, "CAMP NOU": 99000,
     "MADISON SQUARE": 19500, "ANFIELD": 54000, "OLD TRAFFORD": 74000
 }
 
 def get_prediction(venue_name):
     venue_upper = venue_name.upper()
-    capacity = 12000 # Domyślna pojemność jeśli nie znamy obiektu
-    
+    capacity = 15000
     for key, val in CAPACITIES.items():
         if key in venue_upper:
             capacity = val
             break
-            
-    # Realistyczny szum danych (od 80% do 100% wypełnienia)
-    predicted = int(capacity * random.uniform(0.8, 1.0))
+    predicted = int(capacity * random.uniform(0.85, 0.98))
     return predicted, capacity
 
 def get_live_data(search_term):
     API_KEY = "9ce768d285f42807066e50e234bb6f0caa0c17bb3c63c62d42e2ead0a679513f" 
-    # Szukamy szerzej używając "events" w zapytaniu
     params = {
-        "q": f"{search_term} events schedule",
+        "q": f"{search_term} upcoming events schedule 2025 2026",
         "hl": "en",
-        "gl": "us", # Zmienione na US/Global dla szerszych wyników
+        "gl": "gb",
         "api_key": API_KEY
     }
     
@@ -71,73 +63,75 @@ def get_live_data(search_term):
         results = search.get_dict()
         events_list = []
         
-        # 1. Sprawdź karuzelę wydarzeń Google (najlepsze źródło koncertów/targów)
+        # 1. Szukaj w oficjalnych widgetach wydarzeń Google
         if "events_results" in results:
-            for ev in results["events_results"][:9]:
+            for ev in results["events_results"][:12]:
                 events_list.append({
                     "title": ev.get("title"),
-                    "venue": ev.get("venue", {}).get("name", "Unknown Venue"),
-                    "date": ev.get("date", {}).get("when", "Upcoming"),
+                    "venue": ev.get("venue", {}).get("name", search_term),
+                    "date": ev.get("date", {}).get("when", "2025/2026"),
                     "type": "EVENT"
                 })
         
-        # 2. Sprawdź wyniki sportowe (jeśli to drużyna)
+        # 2. Szukaj w wynikach sportowych
         if "sports_results" in results and "games" in results["sports_results"]:
-            for game in results["sports_results"]["games"][:6]:
+            for game in results["sports_results"]["games"][:8]:
                 teams = game.get("teams", [{},{}])
                 events_list.append({
-                    "title": f"{teams[0].get('name', 'TBD')} vs {teams[1].get('name', 'TBD')}",
+                    "title": f"{teams[0].get('name', 'Team A')} vs {teams[1].get('name', 'Team B')}",
                     "venue": search_term.upper(),
-                    "date": game.get("date", "Upcoming"),
+                    "date": game.get("date", "Upcoming Match"),
                     "type": "MATCH"
                 })
 
-        # 3. Jeśli wciąż pusto, użyj wyników organicznych (wyszukiwanie stron)
+        # 3. KLUCZOWA POPRAWKA: Jeśli nie ma widgetów, wyciągnij nazwy z tytułów stron (Organic)
         if not events_list and "organic_results" in results:
-            for res in results["organic_results"][:5]:
+            for res in results["organic_results"][:8]:
+                title = res.get("title")
+                # Czyścimy tytuł z nazwy strony (np. usuwamy "| Ticketmaster")
+                clean_title = title.split('|')[0].split('-')[0].strip()
+                
+                snippet = res.get("snippet", "")
+                
                 events_list.append({
-                    "title": res.get("title")[:50] + "...",
-                    "venue": "Check Website",
-                    "date": "See Details",
-                    "type": "INFO"
+                    "title": clean_title,
+                    "venue": search_term,
+                    "date": "Check details in Jira",
+                    "type": "DISCOVERED"
                 })
                 
         return events_list
-    except:
+    except Exception as e:
         return []
 
 # WYŚWIETLANIE
 data = get_live_data(query)
 
 if data:
-    st.metric("ZNALEZIONO WYDARZEŃ", len(data))
+    st.metric("TOTAL EVENTS FOUND", len(data))
     cols = st.columns(3)
     for i, ev in enumerate(data):
         with cols[i % 3]:
             pred_val, cap_val = get_prediction(ev['venue'])
             
-            # Link do Jiry
             mail_body = f"Event: {ev['title']}\nVenue: {ev['venue']}\nDate: {ev['date']}\nEst. Attendance: {pred_val}"
             mail_url = f"mailto:support@aifi-ml.atlassian.net?subject=STAFFING:{ev['title']}&body={urllib.parse.quote(mail_body)}"
             
             st.html(f"""
                 <div class="event-card">
                     <span class="status-badge">{ev['type']}</span>
-                    <div style="font-size: 1.1rem; font-weight: bold; margin: 12px 0 4px 0;">{ev['title']}</div>
+                    <div style="font-size: 1.1rem; font-weight: bold; margin: 12px 0 4px 0; min-height: 50px;">{ev['title']}</div>
                     <div style="color: #888; font-size: 0.85rem; margin-bottom: 8px;">📍 {ev['venue']}</div>
                     <div style="color: #555; font-size: 0.8rem;">🕒 {ev['date']}</div>
                     
                     <div class="prediction-box">
-                        <div style="color: #00d4ff; font-size: 0.7rem; font-weight: bold; letter-spacing: 0.5px;">PREDYKCJA FREKWENCJI</div>
-                        <div style="font-size: 1.3rem; font-weight: bold; color: #fff;">~ {pred_val:,} os.</div>
-                        <div style="color: #444; font-size: 0.65rem;">Confidence Score: 88%</div>
+                        <div style="color: #00d4ff; font-size: 0.7rem; font-weight: bold;">ATTENDANCE PREDICTION</div>
+                        <div style="font-size: 1.3rem; font-weight: bold;">~ {pred_val:,}</div>
+                        <div style="color: #444; font-size: 0.65rem;">Based on venue capacity</div>
                     </div>
                     
-                    <a href="{mail_url}" class="jira-btn">📩 Wyślij do Jira</a>
+                    <a href="{mail_url}" class="jira-btn">📩 Create Jira Task</a>
                 </div>
             """)
 else:
-    st.warning("Nie znaleziono wyników dla tego zapytania. Spróbuj wpisać np. 'Events in Manchester' lub 'Real Madrid fixtures'.")
-
-st.markdown("---")
-st.caption("Event Collector Global Engine v3.0")
+    st.warning("No live data found. Try more specific name like 'Wembley Stadium events'.")
