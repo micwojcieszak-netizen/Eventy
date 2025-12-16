@@ -1,3 +1,5 @@
 streamlit
-google-search-results
+requests
+beautifulsoup4
+lxml
 pandas
