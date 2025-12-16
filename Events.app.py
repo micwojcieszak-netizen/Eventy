@@ -1,60 +1,96 @@
 import streamlit as st
-import requests
+from serpapi import GoogleSearch
 from datetime import datetime
+import pandas as pd
 
-# 1. Konfiguracja strony (musi być na samym początku!)
-st.set_page_config(page_title="Stadium Dashboard", layout="wide")
+# --- KONFIGURACJA STRONY ---
+st.set_page_config(page_title="StadiumStaffer Clone", layout="wide")
 
-# 2. Stylizacja (Uproszczona, aby uniknąć błędów TypeError)
-style_css = """
+# Stylizacja CSS dla kart (identyczna jak na zdjęciu)
+st.markdown("""
     <style>
     .event-card {
-        background-color: white;
-        border-radius: 12px;
+        background-color: #fff9f2; /* Jasnopomarańczowe tło jak na screenie */
+        border: 1px solid #ffe8cc;
+        border-radius: 15px;
         padding: 20px;
-        border-left: 5px solid #ffca28;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-        color: black;
+        margin-bottom: 15px;
+        color: #1a1a1a;
     }
     .status-badge {
         background-color: #fff4e6;
         color: #d9480f;
-        padding: 4px 12px;
-        border-radius: 8px;
+        padding: 5px 12px;
+        border-radius: 10px;
         font-weight: bold;
+        font-size: 0.85rem;
     }
+    .event-title { font-weight: bold; font-size: 1.2rem; }
+    .countdown { color: #d9480f; font-weight: bold; margin-top: 10px; }
     </style>
-"""
-st.markdown(style_css, unsafe_content_html=True)
+    """, unsafe_content_html=True)
 
-# 3. Treść strony
 st.title("Schedule Overview")
-st.write("Upcoming events for the next 14 days.")
+st.write("Wyszukaj nadchodzące wydarzenia dla dowolnej drużyny lub areny.")
 
-# Statystyki
-c1, c2 = st.columns(2)
-c1.metric("UPCOMING (2 WEEKS)", "2")
-c2.metric("TRACKED VENUES", "1")
+# --- WYSZUKIWARKA ---
+query = st.text_input("Wpisz nazwę (np. LCFC, AO Arena, Manchester City):", "LCFC")
 
-# Dane
-events = [
-    {"match": "Leicester City v Watford", "date": "2025-12-26 15:00", "status": "Upcoming"},
-    {"match": "Leicester City v Derby County", "date": "2025-12-29 19:45", "status": "Upcoming"}
-]
+def fetch_live_events(search_query):
+    params = {
+        "q": f"{search_query} events schedule",
+        "hl": "en",
+        "gl": "gb",
+        "api_key": "TWÓJ_KLUCZ_SERPAPI" # <--- WKLEJ TUTAJ SWÓJ KLUCZ
+    }
+    
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    events = []
+    
+    # Przeszukiwanie wyników "Knowledge Graph" (Google Events)
+    if "events_results" in results:
+        for ev in results["events_results"]:
+            title = ev.get("title")
+            venue = ev.get("venue", {}).get("name", "Unknown Venue")
+            # Próba wyciągnięcia daty
+            date_raw = ev.get("date", {}).get("start_time", "2025-12-25 15:00")
+            
+            events.append({
+                "title": title,
+                "venue": venue,
+                "date": date_raw,
+                "status": "Upcoming"
+            })
+    return events
 
-# 4. Wyświetlanie kart
-cols = st.columns(2)
-for i, ev in enumerate(events):
-    dt = datetime.strptime(ev['date'], '%Y-%m-%d %H:%M')
-    with cols[i % 2]:
-        st.markdown(f"""
-            <div class="event-card">
-                <div style="display: flex; justify-content: space-between;">
-                    <b>{ev['match']}</b>
-                    <span class="status-badge">{ev['status']}</span>
-                </div>
-                <div style="color: gray; font-size: 0.9rem;">LCFC</div>
-                <div style="margin-top: 10px;">🕒 {dt.strftime('%A, %b %d, %Y')}</div>
-            </div>
-        """, unsafe_content_html=True)
+# --- WYŚWIETLANIE ---
+if query:
+    data = fetch_live_events(query)
+    
+    if data:
+        st.subheader(f"Upcoming Schedule for: {query}")
+        cols = st.columns(2)
+        
+        for i, ev in enumerate(data):
+            with cols[i % 2]:
+                # Obliczanie dni do wydarzenia (uproszczone)
+                try:
+                    event_dt = pd.to_datetime(ev['date'])
+                    days_left = (event_dt.replace(tzinfo=None) - datetime.now()).days
+                except:
+                    days_left = "?"
+
+                st.markdown(f"""
+                    <div class="event-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="event-title">{ev['title']}</div>
+                            <div class="status-badge">⚠️ {ev['status']}</div>
+                        </div>
+                        <div style="color: #666; margin-top: 5px;">{ev['venue']}</div>
+                        <div style="margin-top: 10px;">🕒 {ev['date']}</div>
+                        <div class="countdown">Happening in {days_left} days</div>
+                    </div>
+                """, unsafe_content_html=True)
+    else:
+        st.warning("Nie znaleziono oficjalnych wydarzeń. Spróbuj dopisać nazwę miasta.")
