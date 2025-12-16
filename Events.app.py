@@ -1,36 +1,46 @@
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
 
-# Ustawienia strony
-st.set_page_config(page_title="StadiumStaffer Clone", layout="wide")
+st.set_page_config(page_title="Stadium Event Finder", layout="wide")
 
-st.title("🏟️ StadiumStaffer - Zarządzanie Personelem")
+st.title("🏟️ Stadium Event Scout")
+st.write("Wpisz nazwę areny, aby pobrać nadchodzące wydarzenia.")
 
-# Przykładowe dane pracowników
-if 'staff_data' not in st.session_state:
-    st.session_state.staff_data = pd.DataFrame([
-        {"ID": 1, "Imię": "Jan Kowalski", "Rola": "Ochrona", "Sektor": "A1", "Status": "Obecny"},
-        {"ID": 2, "Imię": "Anna Nowak", "Rola": "Bileter", "Sektor": "B3", "Status": "Przerwa"},
-        {"ID": 3, "Imię": "Marek Woźniak", "Rola": "VIP Host", "Sektor": "Loża", "Status": "Obecny"},
-    ])
+venue = st.selectbox("Wybierz arenę:", ["AO Arena (Manchester)", "Inne stadiony (w budowie)"])
 
-# Panel boczny - dodawanie pracownika
-st.sidebar.header("Dodaj pracownika")
-new_name = st.sidebar.text_input("Imię i Nazwisko")
-new_role = st.sidebar.selectbox("Rola", ["Ochrona", "Bileter", "VIP Host", "Obsługa Medyczna"])
-new_sector = st.sidebar.text_input("Sektor")
+def get_ao_arena_events():
+    url = "https://www.ao-arena.com/events/"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        events = []
+        # Szukamy elementów na stronie AO Arena (uproszczony przykład)
+        for item in soup.select('.event-card'): # To zależy od kodu strony
+            title = item.select_one('.event-title').text.strip()
+            date = item.select_one('.event-date').text.strip()
+            events.append({"Data": date, "Wydarzenie": title})
+        
+        return pd.DataFrame(events)
+    except Exception as e:
+        return f"Błąd podczas pobierania danych: {e}"
 
-if st.sidebar.button("Dodaj do bazy"):
-    new_entry = {"ID": len(st.session_state.staff_data)+1, "Imię": new_name, "Rola": new_role, "Sektor": new_sector, "Status": "Zalogowany"}
-    st.session_state.staff_data = pd.concat([st.session_state.staff_data, pd.DataFrame([new_entry])], ignore_index=True)
-    st.success("Dodano pracownika!")
+if st.button("Pobierz wydarzenia"):
+    with st.spinner('Łączenie z serwerem areny...'):
+        if venue == "AO Arena (Manchester)":
+            # Symulacja pobierania (scrapingu) dla demonstracji
+            data = pd.DataFrame([
+                {"Data": "20 Maj 2024", "Wydarzenie": "Girls Aloud"},
+                {"Data": "24 Czerwiec 2024", "Wydarzenie": "Liam Gallagher"},
+                {"Data": "15 Lipiec 2024", "Wydarzenie": "Stevie Nicks"}
+            ])
+            st.success(f"Znaleziono wydarzenia dla {venue}")
+            st.table(data)
+        else:
+            st.warning("Ta arena nie jest jeszcze skonfigurowana.")
 
-# Widok główny - Statystyki
-col1, col2, col3 = st.columns(3)
-col1.metric("Wszyscy pracownicy", len(st.session_state.staff_data))
-col2.metric("Sektory obsadzone", st.session_state.staff_data['Sektor'].nunique())
-col3.metric("Status: Obecny", len(st.session_state.staff_data[st.session_state.staff_data['Status'] == "Obecny"]))
-
-# Tabela pracowników
-st.subheader("Lista personelu w czasie rzeczywistym")
-st.dataframe(st.session_state.staff_data, use_container_width=True)
+st.info("💡 Aby pobierać dane z każdej strony na świecie, musielibyśmy napisać osobne reguły dla każdego adresu URL (tzw. Scrapers).")
