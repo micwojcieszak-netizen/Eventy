@@ -1,12 +1,12 @@
 import streamlit as st
 from serpapi import GoogleSearch
-import pandas as pd
 
-# 1. KONFIGURACJA STRONY - MUSI BYĆ PIERWSZA
+# 1. KONFIGURACJA (Musi być na samej górze)
 st.set_page_config(page_title="StadiumStaffer Dashboard", layout="wide")
 
-# 2. DEFINICJA STYLU JAKO ZMIENNA TEKSTOWA (To zapobiega błędowi TypeError)
-css_style = """
+# 2. NAPRAWA BŁĘDU: Używamy st.html zamiast st.markdown dla stylów
+# To rozwiązuje problem TypeError w Pythonie 3.13
+st.html("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #fcfcfc; }
     .event-card {
@@ -16,6 +16,7 @@ css_style = """
         padding: 20px;
         margin-bottom: 20px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        font-family: sans-serif;
     }
     .status-badge {
         background-color: #fff4e6;
@@ -26,24 +27,21 @@ css_style = """
         float: right;
         font-size: 0.8rem;
     }
-    .event-title { font-weight: bold; font-size: 1.1rem; color: #1a1a1a; }
+    .event-title { font-weight: bold; font-size: 1.1rem; color: #1a1a1a; margin-top: 0; }
     .event-venue { color: #666; font-size: 0.9rem; margin-bottom: 10px; }
     .countdown { color: #d9480f; font-weight: bold; margin-top: 8px; font-size: 0.9rem; }
 </style>
-"""
+""")
 
-# Wstrzyknięcie stylu
-st.markdown(css_style, unsafe_content_html=True)
-
-# 3. NAGŁÓWEK I WYSZUKIWARKA
+# 3. TYTUŁ I WYSZUKIWARKA
 st.title("Schedule Overview")
 st.write("Upcoming events across all venues in the next 14 days.")
 
-query = st.text_input("Enter Venue or Team (e.g. LCFC, Wembley):", "LCFC")
+query = st.text_input("Enter Venue or Team:", "LCFC")
 
-# 4. FUNKCJA POBIERAJĄCA DANE (SerpApi)
+# 4. POBIERANIE DANYCH
 def get_events(search_term):
-    # TWÓJ KLUCZ API
+    # Twój klucz API
     API_KEY = "9ce768d285f42807066e50e234bb6f0caa0c17bb3c63c62d42e2ead0a679513f" 
     
     params = {
@@ -58,20 +56,18 @@ def get_events(search_term):
         results = search.get_dict()
         events_list = []
         
-        # Przeszukiwanie wyników sportowych (mecze)
+        # Przeszukiwanie meczów
         if "sports_results" in results and "games" in results["sports_results"]:
             for game in results["sports_results"]["games"][:6]:
                 teams = game.get("teams", [{},{}])
-                t1 = teams[0].get("name", "TBD")
-                t2 = teams[1].get("name", "TBD")
                 events_list.append({
-                    "title": f"{t1} v {t2}",
+                    "title": f"{teams[0].get('name', 'TBD')} v {teams[1].get('name', 'TBD')}",
                     "venue": search_term.upper(),
                     "date": game.get("date", "Upcoming"),
                     "status": "Upcoming"
                 })
         
-        # Przeszukiwanie kalendarza wydarzeń (koncerty)
+        # Przeszukiwanie eventów jeśli nie ma meczów
         if not events_list and "events_results" in results:
             for ev in results["events_results"][:6]:
                 events_list.append({
@@ -80,15 +76,14 @@ def get_events(search_term):
                     "date": ev.get("date", {}).get("when", "Upcoming"),
                     "status": "Scheduled"
                 })
-        
         return events_list
     except:
         return []
 
-# 5. GENEROWANIE WIDOKU
+# 5. RYSOWANIE INTERFEJSU
 data = get_events(query)
 
-# Liczniki
+# Liczniki na górze
 c1, c2 = st.columns(2)
 c1.metric("UPCOMING (TOTAL)", len(data))
 c2.metric("TRACKED SEARCH", query.upper())
@@ -96,18 +91,18 @@ c2.metric("TRACKED SEARCH", query.upper())
 st.markdown("### 🗓️ Upcoming Schedule")
 
 if data:
-    # Rysowanie kart w dwóch kolumnach
     cols = st.columns(2)
     for i, ev in enumerate(data):
         with cols[i % 2]:
-            # Budowanie karty HTML jako jeden ciąg znaków (bezpieczniej dla Pythona 3.13)
-            card = f'<div class="event-card">'
-            card += f'<span class="status-badge">⚠️ {ev["status"]}</span>'
-            card += f'<div class="event-title">{ev["title"]}</div>'
-            card += f'<div class="event-venue">{ev["venue"]}</div>'
-            card += f'<div style="color: #444; font-size: 0.9rem;">🕒 {ev["date"]}</div>'
-            card += f'<div class="countdown">Data synchronized live</div>'
-            card += f'</div>'
-            st.markdown(card, unsafe_content_html=True)
+            # Tutaj też używamy st.html dla bezpieczeństwa
+            st.html(f"""
+                <div class="event-card">
+                    <span class="status-badge">⚠️ {ev['status']}</span>
+                    <div class="event-title">{ev['title']}</div>
+                    <div class="event-venue">{ev['venue']}</div>
+                    <div style="color: #444; font-size: 0.9rem;">🕒 {ev['date']}</div>
+                    <div class="countdown">Live Data Update</div>
+                </div>
+            """)
 else:
-    st.info("No events found. Check your search query.")
+    st.info("No events found. Check your query.")
